@@ -15,22 +15,7 @@ import librosa
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 
-'''
-What we did:
-1. Extracted features
-2. Visualized data (files in first commit)
-3. Used clustering and more recently radius_neighbors_classifier to classify new drivers (including unkown)
-4. Created an evaluation and prediction function using the trained classifier
-TODO :
-1. Clean code, merge w/ "first" commit (to print graphs w/ variance) V
-2. Save created figure of the dataset after PCA and clustering (first commit) + understand what it means V
-3. Run on collab on all data
-4. Add 2 more clustering algorithms
-5. Generalize visualization of features (datasets) for all people and not just 1 - bonus
 
-6. fix confusion matrix (right now only plots for known speakers)
-
-'''
 
 def load_audio_from_test_dir(speaker_dir):
     """
