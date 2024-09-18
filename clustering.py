@@ -75,7 +75,6 @@ def train_radius_neighbors_classifier(features, labels, radius=1.0):
     # Train Radius Neighbors Classifier with integer outlier_label=-1
     radius_classifier = RadiusNeighborsClassifier(radius=radius, outlier_label=-1)
     radius_classifier.fit(features_scaled, labels)
-    print(np.unique(labels))
 
     return radius_classifier, scaler
 

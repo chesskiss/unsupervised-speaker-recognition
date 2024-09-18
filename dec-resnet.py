@@ -1,103 +1,115 @@
 import os
-import librosa
 import numpy as np
-from sklearn.cluster import KMeans
-from tensorflow.keras.models import Model
-from tensorflow.keras.optimizers import Adam
-from sklearn.preprocessing import StandardScaler
-from tensorflow.keras.applications import ResNet50
-from tensorflow.keras.layers import Dense, Input, Flatten
+import librosa
+from sklearn.neighbors import RadiusNeighborsClassifier
+from sklearn.metrics import accuracy_score
+import tensorflow as tf
+from tensorflow.keras.applications import EfficientNetB0
+from tensorflow.keras.preprocessing import image
+from tensorflow.keras.applications.efficientnet import preprocess_input
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
 
-def extract_mfcc(file_path, sr=22050, n_mfcc=13):
+
+def extract_mfcc(file_path, sr=22050, n_mfcc=40):
     y, sr = librosa.load(file_path, sr=sr)
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc)
-    return np.mean(mfcc, axis=1)
+    return mfcc
 
 
 
-def load_audio_from_dirs(base_dir):
-    """
-    Load audio files from directories and convert speaker labels to integers.
-    """
-    features = []
-    labels = []
-    label_mapping = {}  # To keep track of the mapping from speaker folder to label
-    label_counter = 1
-    
-    for speaker_dir in os.listdir(base_dir):
-        speaker_path = os.path.join(base_dir, speaker_dir)
+def load_audio(root_dir):
+    audioNlabels = []
+    for i, speaker_dir in enumerate(os.listdir(root_dir)):
+        speaker_path = os.path.join(root_dir, speaker_dir)
         if os.path.isdir(speaker_path):
-            if speaker_dir not in label_mapping:
-                label_mapping[speaker_dir] = label_counter  # Map speaker folder to an integer
-                label_counter += 1
             for audio_file in os.listdir(speaker_path):
                 file_path = os.path.join(speaker_path, audio_file)
                 if file_path.endswith('.wav'):
-                    # Extract MFCC features
-                    mfcc_features = extract_mfcc(file_path)
-                    features.append(mfcc_features)
-                    labels.append(label_mapping[speaker_dir])  # Store the integer label
-
-    return np.array(features), np.array(labels)
+                    audioNlabels.append([extract_mfcc(file_path), i])
+    return audioNlabels
 
 
 
-def resnet_autoencoder(input_shape): # ResNet-based autoencoder model
-    resnet = ResNet50(include_top=False, input_shape=input_shape) # Encoder: Using a pretrained ResNet50
-    resnet.trainable = False  # Freeze ResNet layers
+def EfficientNet_encoder(mfcc_features):
+    # Assuming mfcc_features is of shape (n_mfcc, time_steps)
+    mfcc_features = np.expand_dims(mfcc_features, axis=0)  # Add batch dimension
+    mfcc_features = np.transpose(mfcc_features, (0, 2, 1))  # Reorder dimensions if necessary
     
-    # Add a custom fully connected layer to compress the data
-    x = Flatten()(resnet.output)
-    encoded = Dense(256, activation='relu')(x)  # Bottleneck layer (latent space)
+    # Create a placeholder image array
+    # Adjust this based on how you want to process your features
+    img = np.zeros((224, 224, 3))  # Placeholder image
+    img = preprocess_input(img[None, ...])  # Preprocess for EfficientNet
 
-    decoded = Dense(np.prod(input_shape), activation='sigmoid')(encoded) # Decoder: Fully connected layers to reconstruct the input
+    model = EfficientNetB0(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
+    features = model.predict(img)
+    return features.flatten()
+
+
+
+def classify_with_radius_neighbors(featuresNlabels, radius=1.0):
+    encoded_features = []
+    labels = []
     
-    # Define autoencoder model
-    autoencoder = Model(resnet.input, decoded)
-    autoencoder.compile(optimizer=Adam(), loss='mse')
+    # Encode the features
+    for mfcc_features, label in featuresNlabels:
+        encoded = EfficientNet_encoder(mfcc_features)
+        encoded_features.append(encoded)
+        labels.append(label)
     
-    encoder = Model(resnet.input, encoded) #Encoder model to extract the latent space (for clustering)
+    # Convert to numpy arrays
+    encoded_features = np.array(encoded_features)
+    labels = np.array(labels)
+
+    clf = RadiusNeighborsClassifier(radius=radius)
+    clf.fit(encoded_features, labels)
+
+    # Predict the labels using the same features (to check clustering quality)
+    predicted_labels = clf.predict(encoded_features)
     
-    return autoencoder, encoder
+    # Print cluster information
+    unique_labels = np.unique(predicted_labels)
+    for label in unique_labels:
+        cluster_points = encoded_features[predicted_labels == label]
+        print(f"Cluster {label} has {cluster_points.shape[0]} points.")
 
+    # PCA for visualization
+    pca = PCA(n_components=2)
+    reduced_features = pca.fit_transform(encoded_features)
 
-
-def cluster_mfcc_data(mfcc_features, input_shape):
-    # Standardize the MFCC features
-    scaler = StandardScaler()
-    mfcc_scaled = scaler.fit_transform(mfcc_features)
-
-    # Reshape MFCC features to fit the ResNet model input
-    mfcc_reshaped = np.expand_dims(mfcc_scaled, axis=-1)
-
-    # Train the ResNet-based autoencoder
-    autoencoder, encoder = resnet_autoencoder(input_shape)
-    autoencoder.fit(mfcc_reshaped, mfcc_reshaped, epochs=20, batch_size=32, verbose=1)
-
-    # Extract the latent space representation of the MFCC data
-    latent_features = encoder.predict(mfcc_reshaped)
-
-    kmeans = KMeans(n_clusters=5, random_state=42)  
-    clusters = kmeans.fit_predict(latent_features)
-
-    return clusters, latent_features
-
-
-'Related paper: https://ieeexplore.ieee.org/document/9538747'
-if __name__ == '__main__':    
-    base_dir = "audio"  
-    train_features, labels = load_audio_from_dirs(base_dir)
+    plt.figure(figsize=(10, 7))
+    scatter = plt.scatter(reduced_features[:, 0], reduced_features[:, 1], c=predicted_labels, cmap='viridis', alpha=0.5)
+    plt.colorbar(scatter, label='Cluster Label')
+    plt.title('Cluster Visualization')
+    plt.xlabel('PCA Component 1')
+    plt.ylabel('PCA Component 2')
+    plt.savefig('dec_results.png')
+    plt.show()
     
-    # Define the input shape for ResNet (based on your MFCC data shape)
-    input_shape = (train_features.shape[1], 1)
-    print(train_features.shape)
-    clusters, latent_features = cluster_mfcc_data(train_features, input_shape)
+    # Evaluate accuracy of clustering
+    accuracy = accuracy_score(labels, predicted_labels)
+    print(f"Clustering Accuracy: {accuracy}")
+    
+    return predicted_labels, accuracy
 
-    print(clusters)
+
+
+if __name__=='__main__':
+    featuresNlabels = load_audio(root_dir='audio')
+    predicted_labels, accuracy = classify_with_radius_neighbors(featuresNlabels)
+
+
+
 
 '''    TODO - new :
-    1. Reshape the inputshape - give gpt the entire code to fit to the previous version it gave
-    2. Take gpt previous version and use 3 audio files, and check shape. Then figure out how it should be
+    1. Clean code (save model, etc.)
+    2. Run on collab on all data 
+    3. Try other pre-trained models besides EfficientNet
+
+TODO - old: 
+- fix confusion matrix (right now only plots for known speakers)
+- Generalize visualization of features (datasets) for all people and not just 1 - bonus
+
 '''
 
 '''
@@ -108,28 +120,8 @@ What we did:
 4. Created an evaluation and prediction function using the trained classifier
 5. Clean code, merge w/ "first" commit (to print graphs w/ variance) 
 6. Save created figure of the dataset after PCA and clustering (first commit) + understand what it means 
-
-TODO - old: 
-. Run on collab on all data - Ilan
-. Add 1 more clustering algorithms - Deep Embedded Clustering
-https://ieeexplore.ieee.org/document/9538747
-https://ieeexplore.ieee.org/document/9999360
-https://www.nature.com/articles/s41598-024-51699-z
-5. fix confusion matrix (right now only plots for known speakers)
-6. Generalize visualization of features (datasets) for all people and not just 1 - bonus
+7. Used Deep Embedded Clustering with EfficientNet pre-trained model as an auto-encoder and RadiusNeighborsClassifier
+based on 'Related paper: https://ieeexplore.ieee.org/document/9538747'
+8. Performed initial visualization
 
 '''
-    # classifier = 'radius_classifier.pkl'
-    # if os.path.exists(classifier):
-    #     radius_classifier = joblib.load('radius_classifier.pkl')
-    #     scaler = joblib.load('scaler.pkl')  
-    # else:
-        # ....
-        # radius_classifier, scaler = train_radius_neighbors_classifier(train_features, labels, radius=1.0)  # Adjust the radius
-        # joblib.dump(radius_classifier, classifier)
-        # joblib.dump(scaler, 'scaler.pkl')
-
-    # test_dir = "1-test" 
-    # test_features = load_audio_from_test_dir(test_dir)
-    # new_person_cluster_labels = classify_new_person(radius_classifier, scaler, test_features)
-    # print("New person classified as: ", new_person_cluster_labels)
