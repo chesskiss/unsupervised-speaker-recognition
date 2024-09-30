@@ -45,12 +45,13 @@ if __name__ == "__main__":
         scaler = joblib.load('radius_scaler.pkl')  
     else:
         base_dir = "audio"  
-        train_features, labels = load_audio_from_dirs(base_dir)
-        radius_classifier, scaler = train_radius_neighbors_classifier(train_features, labels, radius=1.0)  # Adjust the radius
+        train_features, test_features, train_labels,test_labels = load_audio_from_dirs(base_dir)
+        radius_classifier, scaler = train_radius_neighbors_classifier(train_features, train_labels, radius=1.0)  # Adjust the radius
         joblib.dump(radius_classifier, classifier)
         joblib.dump(scaler, 'radius_scaler.pkl')
 
     test_dir = "1-test" 
     test_features = load_audio_from_test_dir(test_dir)
-    new_person_cluster_labels = classify_new_person(radius_classifier, scaler, test_features)
+    for person in test_features:#TODO
+        new_person_cluster_labels = classify_new_person(radius_classifier, scaler, test_features)
     print("New person classified as: ", new_person_cluster_labels)

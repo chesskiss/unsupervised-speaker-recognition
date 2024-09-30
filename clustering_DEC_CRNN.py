@@ -78,8 +78,6 @@ def classify_with_radius_neighbors(featuresNlabels, radius=1.0):
     labels = np.array(labels)
 
     clf = RadiusNeighborsClassifier(radius=radius)
-    print(encoded_features.shape)
-    print(len(labels))
     clf.fit(encoded_features, labels)
 
     # Predict the labels using the same features (to check clustering quality)
@@ -87,7 +85,6 @@ def classify_with_radius_neighbors(featuresNlabels, radius=1.0):
     
     # Print cluster information
     unique_labels = np.unique(predicted_labels)
-    print(unique_labels)
     for label in unique_labels:
         cluster_points = encoded_features[predicted_labels == label]
         print(f"Cluster {label} has {cluster_points.shape[0]} points.")

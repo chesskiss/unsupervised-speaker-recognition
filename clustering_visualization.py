@@ -194,15 +194,10 @@ def visualize_multiple_audio(file_paths):
 
 
 
-def evaluate_classifier(classifier, scaler, features, labels):
+def evaluate_classifier(predicted_labels, labels):
     """
     Evaluate the classifier on a test dataset of known speakers.
     """
-    # Standardize the features using the same scaler
-    features_scaled = scaler.transform(features)
-
-    # Predict the labels
-    predicted_labels = classifier.predict(features_scaled)
 
     # Calculate evaluation metrics
     accuracy = accuracy_score(labels, predicted_labels)
@@ -249,14 +244,14 @@ if __name__ == "__main__":
     
     'Visualize clusters'
     base_dir = "audio"  # Replace with your base directory containing speaker dirs
-    features, labels = load_audio_from_dirs(base_dir)
-    cluster_labels = cluster_audio_features(features)
-    plot_clusters(features, cluster_labels)
+    train_features, test_features, train_labels,test_labels = load_audio_from_dirs(base_dir)
+    cluster_labels = cluster_audio_features(train_features)
+    plot_clusters(train_features, cluster_labels)
 
     'Evaluate classifer if exists'
     classifier = 'radius_classifier.pkl'
     if os.path.exists(classifier):
         # classifier = joblib.load('radius_classifier.pkl')  #load the classifer u wish to eval. Must have .predict()
         scaler = joblib.load('scaler.pkl')  
-        labels = [int(label) for label in labels]
-        evaluate_classifier(classifier, scaler, features, labels)
+        labels = [int(label) for label in test_labels]
+        evaluate_classifier(classifier.predict(scaler.transform(test_features)), labels)

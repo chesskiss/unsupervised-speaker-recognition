@@ -1,2 +1,10 @@
+os
+numpy
 librosa
 tensorflow
+sklearn
+matplotlib
+
+
+seaborn
+#TODO: to be continues 

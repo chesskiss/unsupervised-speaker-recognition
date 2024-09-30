@@ -1,6 +1,7 @@
 import os
 import librosa
 import numpy as np
+from sklearn.model_selection import train_test_split
 
 
 
@@ -31,9 +32,10 @@ def load_audio_from_test_dir(speaker_dir):
 
 
 
-def load_audio_from_dirs(base_dir):
+def load_audio_from_dirs(base_dir, test_size=0.2, random_state=42):
     """
-    Load audio files from directories and convert speaker labels to integers.
+    Load audio files from directories, convert speaker labels to integers,
+    and split the data into training and test sets.
     """
     features = []
     labels = []
@@ -54,7 +56,15 @@ def load_audio_from_dirs(base_dir):
                     features.append(mfcc_features)
                     labels.append(label_mapping[speaker_dir])  # Store the integer label
 
-    return np.array(features), np.array(labels)
+    features = np.array(features)
+    labels = np.array(labels)
+
+    # Split the data into training and test sets
+    X_train, X_test, y_train, y_test = train_test_split(
+        features, labels, test_size=test_size, random_state=random_state, stratify=labels
+    )
+
+    return X_train, X_test, y_train, y_test
 
 
 
